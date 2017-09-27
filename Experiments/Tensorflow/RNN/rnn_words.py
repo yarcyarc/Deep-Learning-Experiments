@@ -66,29 +66,30 @@ n_input = 3
 n_hidden = 512
 
 # tf Graph input
-x = tf.placeholder("float", [None, n_input, 1])
-y = tf.placeholder("float", [None, vocab_size])
+x = tf.placeholder("float", [None, n_input, 1], name="x")
+y = tf.placeholder("float", [None, vocab_size], name="y")
 
 # RNN output node weights and biases
 weights = {
-    'out': tf.Variable(tf.random_normal([n_hidden, vocab_size]))
+    'out': tf.Variable(tf.random_normal([n_hidden, vocab_size]), name="weight_out")
 }
 biases = {
-    'out': tf.Variable(tf.random_normal([vocab_size]))
+    'out': tf.Variable(tf.random_normal([vocab_size]), name="bias_out")
 }
 
 def RNN(x, weights, biases):
 
     # reshape to [1, n_input]
-    x = tf.reshape(x, [-1, n_input])
+    x = tf.reshape(x, [-1, n_input], name="reshape1")
 
     # Generate a n_input-element sequence of inputs
     # (eg. [had] [a] [general] -> [20] [6] [33])
-    x = tf.split(x,n_input,1)
+    x = tf.split(x,n_input,1, name="split2")
 
     # 2-layer LSTM, each layer has n_hidden units.
     # Average Accuracy= 95.20% at 50k iter
-    rnn_cell = rnn.MultiRNNCell([rnn.BasicLSTMCell(n_hidden),rnn.BasicLSTMCell(n_hidden)])
+    # rnn_cell = rnn.MultiRNNCell([rnn.BasicLSTMCell(n_hidden),rnn.BasicLSTMCell(n_hidden)])
+    rnn_cell = rnn.BasicLSTMCell(n_hidden)
 
     # 1-layer LSTM with n_hidden units but with lower accuracy.
     # Average Accuracy= 90.60% 50k iter
@@ -100,9 +101,10 @@ def RNN(x, weights, biases):
 
     # there are n_input outputs but
     # we only want the last output
-    return tf.matmul(outputs[-1], weights['out']) + biases['out']
+    return tf.matmul(outputs[-1], weights['out']) + biases['out'], outputs, weights, biases
 
-pred = RNN(x, weights, biases)
+net = {}
+pred, net["outputs"], net["weights"], net["biases"] = RNN(x, weights, biases)
 
 # Loss and optimizer
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
@@ -138,7 +140,7 @@ with tf.Session() as session:
         symbols_out_onehot[dictionary[str(training_data[offset+n_input])]] = 1.0
         symbols_out_onehot = np.reshape(symbols_out_onehot,[1,-1])
 
-        _, acc, loss, onehot_pred = session.run([optimizer, accuracy, cost, pred], \
+        _, acc, outputs, weights, biases, loss, onehot_pred = session.run([optimizer, accuracy, net["outputs"], net["weights"], net["biases"], cost, pred], \
                                                 feed_dict={x: symbols_in_keys, y: symbols_out_onehot})
         loss_total += loss
         acc_total += acc
