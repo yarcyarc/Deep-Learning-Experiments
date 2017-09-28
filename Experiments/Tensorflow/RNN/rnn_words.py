@@ -179,6 +179,7 @@ with tf.Session() as session:
         _, acc, outputs, weights, biases, loss, onehot_pred, summary = session.run(
             [optimizer, accuracy, net["outputs"], net["weights"], net["biases"], cost, pred, merged_summary_op], \
                                                 feed_dict={x: symbols_in_keys, y: symbols_out_onehot})
+        #
         writer.add_summary(summary, step)
 
         loss_total += loss
