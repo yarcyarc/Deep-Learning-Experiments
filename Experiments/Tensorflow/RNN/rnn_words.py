@@ -82,6 +82,13 @@ def RNN(x, weights, biases):
     # reshape to [1, n_input]
     x = tf.reshape(x, [-1, n_input], name="reshape1")
 
+    tf.summary.histogram('x_reshape1', x)
+    tf.summary.histogram('x_reshape1/sparsity', tf.nn.zero_fraction(x))
+
+    # mfo: will print out the seven first input vectors
+    x = tf.Print(x, [x],
+             'x = ', summarize=20, first_n=7)
+
     # Generate a n_input-element sequence of inputs
     # (eg. [had] [a] [general] -> [20] [6] [33])
     x = tf.split(x,n_input,1, name="split2")
@@ -91,24 +98,33 @@ def RNN(x, weights, biases):
     # rnn_cell = rnn.MultiRNNCell([rnn.BasicLSTMCell(n_hidden),rnn.BasicLSTMCell(n_hidden)])
     rnn_cell = rnn.BasicLSTMCell(n_hidden)
 
+
     # 1-layer LSTM with n_hidden units but with lower accuracy.
     # Average Accuracy= 90.60% 50k iter
     # Uncomment line below to test but comment out the 2-layer rnn.MultiRNNCell above
     # rnn_cell = rnn.BasicLSTMCell(n_hidden)
 
     # generate prediction
+
     outputs, states = rnn.static_rnn(rnn_cell, x, dtype=tf.float32)
 
     # there are n_input outputs but
     # we only want the last output
-    return tf.matmul(outputs[-1], weights['out']) + biases['out'], outputs, weights, biases
+    ret = tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+    # mfo: will print out the 7 first predicted values
+    return tf.Print(ret, [tf.argmax(ret, 1)],
+                   'argmax(out) = ', summarize=20, first_n=7), outputs, weights, biases
+    # return tf.matmul(outputs[-1], weights['out']) + biases['out'], outputs, weights, biases
 
 net = {}
 pred, net["outputs"], net["weights"], net["biases"] = RNN(x, weights, biases)
 
 # Loss and optimizer
 cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
+tf.summary.scalar('loss', cost)
 optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(cost)
+# cost = tf.Print(cost, [cost, tf.shape(cost), "tf.print() call"])
 
 # Model evaluation
 correct_pred = tf.equal(tf.argmax(pred,1), tf.argmax(y,1))
@@ -116,6 +132,8 @@ accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
 # Initializing the variables
 init = tf.global_variables_initializer()
+
+global_step = tf.Variable(0, dtype=tf.int32, trainable=False)
 
 # Launch the graph
 with tf.Session() as session:
@@ -125,6 +143,9 @@ with tf.Session() as session:
     end_offset = n_input + 1
     acc_total = 0
     loss_total = 0
+
+
+    merged_summary_op = tf.summary.merge_all()
 
     writer.add_graph(session.graph)
 
@@ -140,14 +161,18 @@ with tf.Session() as session:
         symbols_out_onehot[dictionary[str(training_data[offset+n_input])]] = 1.0
         symbols_out_onehot = np.reshape(symbols_out_onehot,[1,-1])
 
-        _, acc, outputs, weights, biases, loss, onehot_pred = session.run([optimizer, accuracy, net["outputs"], net["weights"], net["biases"], cost, pred], \
+        _, acc, outputs, weights, biases, loss, onehot_pred, summary = session.run(
+            [optimizer, accuracy, net["outputs"], net["weights"], net["biases"], cost, pred, merged_summary_op], \
                                                 feed_dict={x: symbols_in_keys, y: symbols_out_onehot})
+        writer.add_summary(summary, step)
+
         loss_total += loss
         acc_total += acc
         if (step+1) % display_step == 0:
             print("Iter= " + str(step+1) + ", Average Loss= " + \
                   "{:.6f}".format(loss_total/display_step) + ", Average Accuracy= " + \
                   "{:.2f}%".format(100*acc_total/display_step))
+
             acc_total = 0
             loss_total = 0
             symbols_in = [training_data[i] for i in range(offset, offset + n_input)]
