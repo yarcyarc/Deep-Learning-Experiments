@@ -15,6 +15,7 @@ from tensorflow.contrib import rnn
 import random
 import collections
 import time
+from tensorflow.python import debug as tf_debug
 
 start_time = time.time()
 def elapsed(sec):
@@ -81,9 +82,12 @@ def RNN(x, weights, biases):
 
     # reshape to [1, n_input]
     x = tf.reshape(x, [-1, n_input], name="reshape1")
+    xin = x
 
     tf.summary.histogram('x_reshape1', x)
     tf.summary.histogram('x_reshape1/sparsity', tf.nn.zero_fraction(x))
+
+
 
     # mfo: will print out the seven first input vectors
     x = tf.Print(x, [x],
@@ -111,6 +115,16 @@ def RNN(x, weights, biases):
     # there are n_input outputs but
     # we only want the last output
     ret = tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+    def _debug_func(xin, ret):
+        if (ret == 0.0).any():
+            import ipdb; ipdb.set_trace()
+        from IPython import embed; embed()
+        return False
+
+    debug_op = tf.py_func(_debug_func, [x, ret], [tf.bool])
+    # with tf.control_dependencies(debug_op):
+    #     ret = tf.identity(ret, name='ret')
 
     # mfo: will print out the 7 first predicted values
     return tf.Print(ret, [tf.argmax(ret, 1)],
@@ -143,7 +157,8 @@ with tf.Session() as session:
     end_offset = n_input + 1
     acc_total = 0
     loss_total = 0
-
+    session = tf_debug.LocalCLIDebugWrapperSession(session)
+    session.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
     merged_summary_op = tf.summary.merge_all()
 
